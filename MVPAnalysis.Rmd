@@ -1,0 +1,1073 @@
+---
+title: "MVPAnalysis"
+author: "Viren Gadkari"
+date: "10/23/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+
+
+df <- read_csv('/Users/viren1/Documents/Data Science/SAAConference/MVPProject/mvp_final.csv')
+
+
+df
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+#df <- df %>% drop_na() %>% mutate(Year = str_remove(Year, ' NBA & ABA Awards Voting')) 
+
+#df <- df %>% mutate(Year = str_remove(Year, ' NBA Awards Voting'))
+
+
+df <- df %>% drop_na() %>% select(-c(X1, `Unnamed: 0` ))
+#df %>% summarise(min_year = min(Year), max_year = max(Year))
+
+
+
+df
+
+
+```
+
+
+
+
+```{r}
+
+df$Year <- gsub("\\-.*","",df$Year)
+
+
+era_1 <- df %>% filter(between(Year, '1972', '1979'))
+
+era_2 <- df %>% filter(between(Year, '1980', '1994'))
+
+
+
+era_3 <- df %>% filter(between(Year, '1995', '2013'))
+
+era_4 <- df %>% filter(between(Year, '2013', '2019'))
+
+
+era_1 %>% count(Year) %>% ggplot(aes(x=reorder(Year,n), y=n)) + geom_col(fill='purple') + coord_flip()
+
+era_2 %>% count(Year) %>% ggplot(aes(x=reorder(Year,n), y=n)) + geom_col(fill='pink') + coord_flip()
+
+era_3 %>% count(Year) %>% ggplot(aes(x=reorder(Year,n), y=n)) + geom_col(fill='magenta') + coord_flip()
+
+era_4 %>% count(Year) %>% ggplot(aes(x=reorder(Year,n), y=n)) + geom_col(fill='orange') + coord_flip()
+```
+
+
+
+
+```{r}
+library(tsibble)
+
+era_1$Year <- as.Date(era_1$Year, '%Y')
+era_2$Year <- as.Date(era_2$Year, '%Y')
+era_3$Year <- as.Date(era_3$Year, '%Y')
+era_4$Year <- as.Date(era_4$Year, '%Y')
+
+era_1 <- era_1 %>% select(-c(Year, X1))
+era_2 <- era_2 %>% select(-c(Year, X1))
+era_3 <- era_3 %>% select(-c(Year, X1))
+era_4 <- era_4 %>% select(-c(Year, X1))
+
+
+df_subset <- df %>% select(-c( X1))
+
+df_subset %>% summarise(min_year = min(Year), max_year = max(Year))
+```
+
+```{r}
+
+library(GGally)
+library(ggcorrplot)
+
+
+df_subset_correlations <- df %>% select(-c(Player, Tm))
+
+ggcorr(df_subset_correlations, method = c("everything", "pearson")) 
+
+
+
+```
+
+#convert to csv
+```{r}
+write.csv(df_subset_correlations, '/Users/viren1/Documents/Data Science/SAAConference/subset_correlations.csv')
+```
+
+
+
+
+```{r}
+library(broom)
+library(corrplot)
+
+df_subset_correlations <- df_subset_correlations %>% select(-c(Year))
+
+cor_plot <- cor(df_subset_correlations)
+cor_plot
+```
+
+
+
+
+```{r}
+library(tidymodels)
+
+```
+
+
+PCA
+
+
+
+Era 1
+```{r}
+#ERA 1
+
+era_1 <- era_1 %>% select(-c(First,Share))
+
+
+era1_rec <- recipe(`Pts Won` ~ ., data=era_1) %>%
+    update_role(Player, Tm, new_role='id') %>% 
+    step_normalize(all_predictors()) %>%
+    step_pca(all_predictors(), id='pca', num_comp=4)
+
+era1_rec %>% prep() %>%
+  tidy(id = "pca", type = "variance") %>% 
+  dplyr::filter(terms == "percent variance") %>% 
+  ggplot(aes(x = component, y = value)) + 
+  geom_col(fill = "#b6dfe2") + 
+  xlim(c(0, 5)) + 
+  ylab("% of total variance")
+
+era1_rec
+
+
+```
+
+
+```{r}
+
+era1_prep <- prep(era1_rec)
+
+tidied_era_1 <- tidy(era1_rec, 2)
+
+era1_baked <- bake(era1_prep, era_1)
+
+
+
+
+tidied_era_1
+
+#tidied_era_1 %>%
+  #filter(component %in% paste0("PC", 1:4)) %>%
+  #mutate(component = fct_inorder(component)) %>%
+  #ggplot(aes(value, terms, fill = terms)) +
+  #geom_col(show.legend = FALSE) +
+  #facet_wrap(~component, nrow = 1) +
+  #labs(y = NULL)
+```
+
+
+PCA1 vs PCA2
+```{r}
+
+era1_baked %>%
+  ggplot(aes(PC1, PC2, label = Player)) +
+  geom_point(aes(color = Tm), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+
+```
+
+
+
+PCA1 vs. PCA3
+```{r}
+
+era1_baked %>%
+  ggplot(aes(PC1, PC3, label = Player)) +
+  geom_point(aes(color = Tm), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+
+
+```
+
+
+
+PCA1 vs. PCA4
+
+```{r}
+
+era1_baked %>%
+  ggplot(aes(PC1, PC4, label = Player)) +
+  geom_point(aes(color = Tm), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+
+```
+
+
+PC2 vs. PC3
+
+```{r}
+
+era1_baked %>%
+  ggplot(aes(PC2, PC3, label = Player)) +
+  geom_point(aes(color = Tm), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+
+```
+
+
+PC2 vs. PC4
+
+```{r}
+era1_baked %>%
+  ggplot(aes(PC2, PC4, label = Player)) +
+  geom_point(aes(color = Player), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+```
+
+
+
+
+
+PC3 vs. PC4
+```{r}
+
+era1_baked %>%
+  ggplot(aes(PC3, PC4, label = Player)) +
+  geom_point(aes(color = Player), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+era_2 <- era_2 %>% select(-c(First, Share))
+
+era2_rec <- recipe(`Pts Won` ~ ., data=era_2) %>%
+  update_role(Player, Tm, new_role='id') %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), id='pca', num_comp = 4)
+
+era2_prep <- prep(era2_rec)
+
+tidied_era_2 <- tidy(era2_rec, 2)
+
+tidied_era_2
+
+#tidied_era_2 %>%
+ # filter(component %in% paste0("PC", 1:4)) %>%
+ # mutate(component = fct_inorder(component)) %>%
+  #ggplot(aes(value, terms, fill = terms)) +
+  #geom_col(show.legend = FALSE) +
+  #facet_wrap(~component, nrow = 1) +
+ # labs(y = NULL)
+
+```
+
+
+
+```{r}
+era_3 <- era_3 %>% select(-c(First, Share))
+
+
+
+```
+
+
+
+```{r}
+era_4 <- era_4 %>% select(-c(First, Share))
+
+
+
+```
+
+
+
+##DONT RUN THIS CHUNK
+
+## RUN df
+```{r}
+
+df_subset_pca <- df %>% select(-c(`Pts Max`, Share, WS, First))
+```
+
+
+
+
+```{r}
+
+library(tidymodels)
+
+
+
+
+pca_rec <- recipe(`Pts Won`~., data=df_subset_pca)  %>%
+  update_role(Player, Tm, Year, new_role='id') %>% 
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), id='pca', num_comp=4)
+
+pca_rec %>% 
+  prep() %>%
+  tidy(id = "pca", type = "variance") %>% 
+  dplyr::filter(terms == "percent variance") %>% 
+  ggplot(aes(x = component, y = value)) + 
+  geom_col(fill = "#b6dfe2") + 
+  xlim(c(0, 5)) + 
+  ylab("% of total variance")
+
+
+
+pca_prep <- prep(pca_rec)
+
+
+juice(pca_prep)
+```
+
+
+
+```{r}
+tidied_pca <- tidy(pca_prep)
+
+tidied_pca
+```
+
+
+```{r}
+tidied_pca <- tidy(pca_prep, 2)
+
+tidied_pca
+
+
+
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:4)) %>%
+  mutate(component = fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component, nrow = 1) +
+  labs(y = NULL)
+```
+
+```{r}
+
+library(tidytext)
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:4)) %>%
+  group_by(component) %>%
+  top_n(8, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  labs(
+    x = "Absolute value of contribution",
+    y = NULL, fill = "Positive?"
+  )
+```
+
+
+
+
+
+```{r}
+
+pca_baked <- bake(pca_prep, df_subset_pca)
+
+pca_baked
+
+pca_baked$Year <- as.character(pca_baked$Year)
+
+
+
+
+
+pca_baked %>% filter(between(Year, '1955', '1979')) %>%
+  ggplot(aes(PC1, PC2, label = Player)) +
+  geom_point(aes(color = `Pts Won`), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL)  +
+  scale_colour_gradient(low = "lightblue", high = "darkgreen", na.value = NA)
+```
+
+
+
+
+
+```{r}
+pca_baked %>% filter(between(Year, '1980', '1994')) %>%
+  ggplot(aes(PC1, PC2, label = Player)) +
+  geom_point(aes(color = `Pts Won`), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL) +
+  scale_colour_gradient(low = "lightblue", high = "darkgreen", na.value = NA)
+
+```
+
+
+```{r}
+pca_baked %>% filter(between(Year, '1995', '2013')) %>%
+  ggplot(aes(PC1, PC2, label = Player)) +
+  geom_point(aes(color = `Pts Won`), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL) +
+  scale_colour_gradient(low = "lightblue", high = "darkgreen", na.value = NA)
+
+
+```
+
+```{r}
+pca_baked %>% filter(between(Year, '2013', '2019')) %>%
+  ggplot(aes(PC1, PC2, label = Player)) +
+  geom_point(aes(color = `Pts Won`), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL) +
+  scale_colour_gradient(low = "lightblue", high = "darkgreen", na.value = NA)
+
+```
+
+
+
+
+
+
+```{r}
+fit <- df_subset_pca %>% select(where(is.numeric)) %>% prcomp(scale=TRUE)
+
+
+
+```
+
+```{r}
+fit %>%
+  tidy(matrix = "rotation")
+
+
+arrow_style <- arrow(
+  angle = 20, ends = "first", type = "closed", length = grid::unit(8, "pt")
+)
+
+# plot rotation matrix
+#fit %>%
+  #tidy(matrix = "rotation") %>%
+  #pivot_wider(names_from = "PC", names_prefix = "PC", values_from = "value") %>%
+  #ggplot(aes(PC1, PC2)) +
+  #geom_segment(xend = 0, yend = 0, arrow = arrow_style) +
+  #geom_text(
+   # aes(label = column),
+   # hjust = 1, nudge_x = -0.02, 
+   # color = "#904C2F"
+  #) +
+  #xlim(-1.25, .5) + ylim(-.5, 1) +
+  #coord_fixed() + # fix aspect ratio to 1:1
+  #theme_minimal_grid(12)
+```
+
+```{r}
+fit %>%
+  tidy(matrix = "eigenvalues") %>%
+  ggplot(aes(PC, percent)) +
+  geom_col() +
+  scale_x_continuous(breaks = 1:9) +
+  scale_y_continuous(
+    labels = scales::percent_format(),
+    expand = expansion(mult = c(0, 0.01))
+  ) 
+```
+
+
+
+```{r}
+library(ggbiplot)
+
+
+ggbiplot(fit)
+```
+
+
+
+
+Age -- Player's age on February 1 of the season
+Tm -- Team
+Voting
+First -- First Place Votes
+Totals
+G -- Games
+Per Game
+MP -- Minutes Played Per Game
+PTS -- Points Per Game
+TRB -- Total Rebounds Per Game
+AST -- Assists Per Game
+STL -- Steals Per Game
+BLK -- Blocks Per Game
+Shooting
+FG% -- Field Goal Percentage
+3P% -- 3-Point Field Goal Percentage
+FT% -- Free Throw Percentage
+Advanced
+WS -- Win Shares
+An estimate of the number of wins contributed by a player.
+WS/48 -- Win Shares Per 48 Minutes
+An estimate of the number of wins contributed by a player per 48 minutes (league average is approximately .100)
+
+
+
+
+LASSO Regression
+
+```{r}
+
+#df_subset
+
+
+df_subset_regression <- df %>% select(-c(`First`, `Share`, `Pts Max`, `WS`))
+
+df_subset_regression
+```
+
+
+```{r}
+#library(rstanarm)
+
+#nba_glm <- stan_glm(`Pts Won` ~ ., data=df_subset, family=Gamma(link='log'))
+```
+
+
+
+
+
+
+```{r}
+df_subset_regression
+
+```
+
+
+
+
+```{r}
+nba_split <- initial_split(df_subset_regression)
+
+nba_train <- training(nba_split)
+nba_test <- testing(nba_split)
+
+
+
+
+nba_recipe <- recipe(`Pts Won` ~ ., data=nba_train) %>%
+  update_role(Player, Tm, Year, new_role='id') %>% 
+  step_corr(all_numeric(), -all_outcomes()) %>%
+  step_zv(all_numeric(), -all_outcomes()) %>%
+  step_normalize(all_numeric(), -all_outcomes()) 
+
+
+nba_prep <- nba_recipe %>% prep(strings_as_factors=FALSE)
+
+
+
+lasso_model <- linear_reg(penalty=20, mixture=1) %>% set_engine('glmnet', intercept=FALSE, standardize=FALSE) 
+
+
+
+
+ridge_model <- linear_reg(penalty=0.1, mixture=0) %>% set_engine('glmnet', intercept=FALSE, standardize=FALSE) 
+
+
+
+
+
+
+
+
+
+wf <- workflow() %>% add_recipe(nba_recipe)
+
+
+
+
+lasso_fit <- wf %>% add_model(lasso_model) %>% fit(data=nba_train)
+
+lasso_fit %>% pull_workflow_fit() %>% tidy() %>% arrange(desc(estimate))# %>% ggplot(aes(x=reorder(term,estimate), y=estimate)) + geom_col(fill='blue') + coord_flip()
+
+
+#lasso_gamma_fit <- wf %>% add_model(lasso_gamma_model) %>% fit(data=nba_train)
+
+#lasso_gamma_fit %>% pull_workflow_fit() %>% tidy() %>% arrange(desc(estimate))
+
+ridge_fit <- wf %>% add_model(ridge_model) %>% fit(data=nba_train)
+
+
+
+#ridge_gamma_fit <- wf %>% add_model(ridge_gamma_model) %>% fit(data=nba_train)
+
+#ridge_gamma_fit %>% pull_workflow_fit() %>% tidy() %>% arrange(desc(estimate))
+
+ridge_fit %>% pull_workflow_fit() %>% tidy() %>% arrange(desc(estimate))# %>% ggplot(aes(x=reorder(term, estimate), y=estimate)) + geom_col(fill='red') + coord_flip()
+
+
+
+
+
+
+#last_lasso_wf <- workflow() %>% add_model(lasso_model) %>% add_recipe(nba_recipe)
+
+
+#last_lasso_fit <- last_lasso_wf %>% last_fit(nba_split)
+
+
+#tidied_pca %>%
+  #filter(component %in% paste0("PC", 1:4)) %>%
+  #group_by(component) %>%
+  #top_n(8, abs(value)) %>%
+  #ungroup() %>%
+ # mutate(terms = reorder_within(terms, abs(value), component)) %>%
+ # ggplot(aes(abs(value), terms, fill = value > 0)) +
+ # geom_col() +
+ # facet_wrap(~component, scales = "free_y") +
+ # scale_y_reordered() +
+ # labs(
+  #  x = "Absolute value of contribution",
+  #  y = NULL, fill = "Positive?"
+ # )
+
+
+
+
+#nba_test$predictions <- lasso_test$.pred
+
+#nba_test %>% rmse(truth=`Pts Won`, estimate=predictions)
+```
+
+```{r}
+library(parsnip)
+library(rpart)
+library(rpart.plot)
+
+nba_recipe_dt <- recipe(`Pts Won` ~ ., data=nba_train) %>%
+  update_role(Player, Tm, Year, new_role='id') %>% 
+  step_corr(all_numeric(), -all_outcomes()) 
+
+decision_tree_model <- decision_tree(mode='regression') %>% set_engine('rpart')
+
+
+decision_tree_wf <- workflow() %>% add_recipe(nba_recipe_dt)
+
+decision_tree_fit <- decision_tree_wf %>% add_model(decision_tree_model) %>% fit(data=nba_train)
+
+decision_tree_fit %>% pull_workflow_fit() 
+
+rpart.plot(decision_tree_fit$fit$fit$fit)
+
+
+```
+
+
+
+
+
+
+```{r}
+library(rpart.utils)
+
+
+rules_df <- rpart.rules.table(decision_tree_fit$fit$fit$fit) %>%
+  filter(Leaf==TRUE) %>%
+  group_by(Rule) %>%
+  summarise(Subrules = paste(Subrule, collapse=","))
+
+
+df <- nba_train %>%
+  mutate(Rule = row.names(decision_tree_fit$fit$fit$fit$frame)[decision_tree_fit$fit$fit$fit$where]) %>%
+  left_join(rules_df, by="Rule")
+head(df)
+
+
+decision_tree_test <- decision_tree_fit %>% predict(nba_test) 
+
+nba_test$predictions <- decision_tree_test$.pred
+
+nba_test %>% rmse(truth=`Pts Won`, estimate=predictions)
+
+```
+
+
+
+```{r}
+get_node <- function(rpart.object=decision_tree_fit$fit$fit$fit, data=nba_train, node.number=15) {
+  data[which(decision_tree_fit$fit$fit$fit$where == node.number),]  
+}
+get_node()
+
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+mvp_glm <- glm(`Pts Won` ~ Age + PTS + AST + `FG%` + `WS/48`, data=df_subset_regression, family=Gamma('identity'))
+
+mvp_lm <- lm(`Pts Won` ~ Age + PTS + AST + `FG%` + `WS/48`, data=df_subset_regression)
+
+
+
+```
+
+
+```{r}
+summary(mvp_glm)
+
+plot(mvp_glm)
+
+qqnorm(mvp_glm$residuals)
+qqline(mvp_glm$residuals)
+
+
+
+```
+
+
+```{r}
+summary(mvp_lm)
+
+plot(mvp_lm)
+
+hist(mvp_lm$residuals)
+```
+
+
+
+
+
+
+```{r}
+ggplot(df_subset,aes(x=`Pts Won`)) + geom_histogram()
+```
+
+
+```{r}
+nba_train_glmnet <- nba_train %>% select(-c(Player, Tm))
+nba_test_glmnet <- nba_test %>% select(-c(Player, Tm))
+
+x_train <- nba_train_glmnet 
+
+y_train <- nba_train_glmnet %>% select(`Pts Won`)
+
+
+x <- model.matrix(`Pts Won` ~ ., x_train)[,-1]
+y <- x_train %>% select(`Pts Won`) %>% unlist() %>% as.numeric()
+```
+
+
+```{r}
+df_subset_regression <- df_subset_regression %>% select(-c(Player, Tm))
+```
+
+```{r}
+
+x <- model.matrix(`Pts Won` ~ ., df_subset_regression)[,-1]
+y <- df_subset_regression %>% select(`Pts Won`) %>% unlist() %>% as.numeric()
+grid = 10^seq(10, -2, length = 100)
+
+x <- scale(x)
+
+y <- scale(y)
+
+train <- df_subset_regression %>% sample_frac(0.60)
+
+test <- df_subset_regression %>% setdiff(train)
+
+
+x_train <- model.matrix(`Pts Won` ~ ., train)[,-1]
+x_test <- model.matrix(`Pts Won` ~ ., test)[,-1]
+
+x_train <- scale(x_train)
+
+x_test <- scale(x_test)
+
+y_train <- train %>% select(`Pts Won`) %>% unlist() %>% as.numeric()
+
+y_test <- test %>% select(`Pts Won`) %>% unlist() %>% as.numeric()
+
+y_train <- scale(y_train)
+
+y_test <- scale(y_test)
+
+lasso_mod <- glmnet(x_train, y_train, alpha=0, lambda=10, standardize=FALSE)
+
+
+
+```
+
+
+```{r}
+
+
+set.seed(1)
+cv.out <- cv.glmnet(x_train, y_train,alpha=0, lambda=grid, standardize=FALSE)
+
+plot(cv.out)
+
+
+```
+
+
+
+
+
+```{r}
+bestlam <- cv.out$lambda.min
+bestlam
+#Qlasso_pred <- predict(lasso_mod, s=bestlam, newx=x_test)
+
+#Qmean((lasso_pred-y_test)^2)
+```
+
+```{r}
+out <- glmnet(x, y, alpha=0, lambda=grid, standardize=FALSE)
+
+lasso_coef <- predict(out, type='coefficients', s=bestlam)
+
+lasso_coef
+
+
+
+summary(lasso_mod)
+```
+
+```{r}
+
+lasso_coef[lasso_coef != 0]
+
+```
+
+
+
+
+Factor Analysis
+
+
+
+
+
+
+Kmeans with PCA
+
+
+```{r}
+#df_subset_kmeans
+
+
+pca_baked_kmeans <- pca_baked %>% select(-c(Player, Tm))
+
+
+
+cls <- kmeans(pca_baked_kmeans, centers=3)
+cls_2 <- kmeans(df_subset_regression, centers=3)
+
+
+pca_baked$cluster <- as.character(cls$cluster)
+df_subset_regression$cluster <- as.character(cls_2$cluster)
+
+df_subset_regression$Player <- df$Player
+
+df_subset_regression
+
+
+
+```
+
+
+
+
+```{r}
+df_subset_regression %>%
+  ggplot(aes(`WS/48`, `Pts Won`, label=Player)) +
+  geom_point(aes(color = cluster), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL) 
+```
+
+
+
+
+```{r}
+df_subset_regression %>%
+  ggplot(aes(PTS, `Pts Won`, label=Player)) +
+  geom_point(aes(color = cluster), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward") +
+  labs(color = NULL) 
+```
+
+
+```{r}
+ggplot(df_subset_regression, aes(x=AST, y=log(`Pts Won`))) + geom_point()
+       
+       
+```
+
+
+
+
+
+
+
+```{r}
+
+library(psych)
+
+```
+
+```{r}
+
+df_subset_correlations <- df_subset_correlations %>% select(-c(Share, First, `Pts Won`, `Pts Max`))
+
+
+nba_pairwise_cor <- cor(df_subset_correlations, use= "pairwise.complete.obs")
+
+```
+
+```{r}
+nba_cor <- cor(df_subset_correlations)
+
+factors_data <- fa(r=nba_pairwise_cor, nfactors=4)
+
+
+
+results <- data.frame(Factor_1 = factors_data[1])
+
+#factors_data  %>% ggplot(aes(x=MR1, y=MR2, label(rownames(factors_data)))) + geom_point() +geom_text(check_overlap = TRUE, hjust = "inward") 
+
+```
+
+
+
+```{r}
+fit <- factanal(df_subset_correlations, 3, 'cluster')
+
+load <- fit$loadings[,1:2]
+plot(load,type="n") # set up plot
+text(load,labels=names(df_subset_correlations),cex=.7) # add variable names
+```
+
+
+```{r}
+fit$loadings
+```
+
+
+```{r}
+
+fa.diagram(factors_data)
+
+```
+
+
+
+```{r}
+
+
+scree(nba_pairwise_cor, factors = FALSE)
+```
+
+
+```{r}
+library(FactoMineR)
+result <- PCA(df_subset_correlations)
+```
+
+
+
+A lot of gamma regression
+
+```{r}
+
+nba_train <- nba_train %>% select(-c(Player, Tm, WS))
+
+#G is significant
+#MP significant
+#PTS significant
+#TRB Significant
+#AST SIGNificant
+#STL sugnificant at 0.01
+#BLK signifcant at 0.01
+#FG% significant at 0.01
+#3P% not significant
+#FT% significant at 0.05
+#WS/48 significant
+#Age not significant
+age_lm <- glm(`Pts Won` ~ Age , data=nba_train, family=Gamma('log'))
+
+
+summary(age_lm)
+
+
+
+
+
+```
+
+
+
+
+Decision Tree
+
+```{r}
+
+
+
+
+```
+
+
+
+
+
+
